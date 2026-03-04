@@ -8,6 +8,7 @@
 #include "product.h"
 #include "cart.h"
 #include "fraud.h"
+#include "order.h"
 
 bool is_numeric(const char *str) {
     if (str == NULL || *str == '\0') {
@@ -26,6 +27,7 @@ void process_request(const char* action, const char* param1, const char* param2)
     auth_init();
     cart_init();
     fraud_init();
+    order_init();
 
     printf("PROJECT: SmartEcom DSA Engine\n");
     printf("MODULE_CALL: %s\n", action);
@@ -86,10 +88,32 @@ void process_request(const char* action, const char* param1, const char* param2)
         printf("DSA_USED: Cart used Linked List. Undo function state saved to Stack.\n");
         cart_display();
 
+    } else if (strcmp(action, "CART_VIEW") == 0) {
+        cart_display();
+        printf("DSA_USED: Cart displayed using Linked List traversal.\n");
+
+    } else if (strcmp(action, "CART_TOTAL") == 0) {
+        float total = cart_calculate_total();
+        printf("RESULT: Cart Total = %.2f\n", total);
+        printf("DSA_USED: Cart total calculated by traversing Linked List with BST price lookup.\n");
+
     } else if (strcmp(action, "CART_UNDO") == 0) {
         cart_undo_last_action();
         printf("DSA_USED: Undo function used Stack (LIFO) to reverse last cart operation.\n");
         cart_display();
+
+    } else if (strcmp(action, "ORDER_CREATE") == 0) {
+        float total = cart_calculate_total();
+        if (total > 0) {
+            order_process_new(param1, total);
+            cart_clear(param1);
+        } else {
+            printf("ERROR: Cannot create order. Cart is empty.\n");
+        }
+
+    } else if (strcmp(action, "ORDER_VIEW") == 0) {
+        order_display_all();
+        printf("DSA_USED: Orders displayed using Queue (FIFO) traversal.\n");
 
     } else if (strcmp(action, "FRAUD_CHECK") == 0) {
         bool is_fraud = fraud_check_review(param1);

@@ -36,6 +36,21 @@ void auth_init() {
 }
 
 void auth_register_user(int id, const char* username, const char* password) {
+    if (username == NULL || password == NULL) {
+        printf("ERROR: Registration Failed. Invalid input.\n");
+        return;
+    }
+    
+    if (strlen(username) == 0 || strlen(username) >= MAX_NAME_LEN) {
+        printf("ERROR: Registration Failed. Username length invalid.\n");
+        return;
+    }
+    
+    if (strlen(password) == 0 || strlen(password) >= MAX_NAME_LEN) {
+        printf("ERROR: Registration Failed. Password length invalid.\n");
+        return;
+    }
+    
     if (auth_user_exists(username)) {
         printf("ERROR: Registration Failed. User '%s' already exists.\n", username);
         return;
@@ -44,15 +59,28 @@ void auth_register_user(int id, const char* username, const char* password) {
     int index = user_hash(username);
 
     User* newUser = (User*)malloc(sizeof(User));
+    if (newUser == NULL) {
+        fprintf(stderr, "ERROR: Memory allocation failed for new User.\n");
+        return;
+    }
+    
     newUser->id = id;
-    strcpy(newUser->username, username);
-    strcpy(newUser->password_hash, password);
+    
+    strncpy(newUser->username, username, MAX_NAME_LEN - 1);
+    newUser->username[MAX_NAME_LEN - 1] = '\0';
+    
+    strncpy(newUser->password_hash, password, MAX_NAME_LEN - 1);
+    newUser->password_hash[MAX_NAME_LEN - 1] = '\0';
 
     newUser->next = user_hash_table[index];
     user_hash_table[index] = newUser;
 }
 
 bool auth_login_user(const char* username, const char* password) {
+    if (username == NULL || password == NULL) {
+        return false;
+    }
+    
     int index = user_hash(username);
     User* current = user_hash_table[index];
 

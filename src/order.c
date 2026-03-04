@@ -25,6 +25,11 @@ static void order_save() {
 }
 
 static void enqueue_order(int id, const char* username, float total) {
+    if (username == NULL) {
+        fprintf(stderr, "ERROR: Invalid username for order.\n");
+        return;
+    }
+    
     Order* newOrder = (Order*)malloc(sizeof(Order));
     if (newOrder == NULL) {
         fprintf(stderr, "ERROR: Memory allocation failed for Order node.\n");
@@ -32,7 +37,10 @@ static void enqueue_order(int id, const char* username, float total) {
     }
 
     newOrder->order_id = id;
+    
     strncpy(newOrder->username, username, MAX_NAME_LEN - 1);
+    newOrder->username[MAX_NAME_LEN - 1] = '\0';
+    
     newOrder->total_amount = total;
     newOrder->next = NULL;
 
@@ -58,7 +66,9 @@ void order_init() {
         float total;
 
         while (fgets(line, sizeof(line), f)) {
+            memset(username, 0, sizeof(username));
             if (sscanf(line, "%d|%49[^|]|%f", &id, username, &total) == 3) {
+                username[MAX_NAME_LEN - 1] = '\0';
                 enqueue_order(id, username, total);
                 if (id >= next_order_id) {
                     next_order_id = id + 1;
@@ -73,6 +83,11 @@ void order_init() {
 }
 
 void order_process_new(const char* username, float total_amount) {
+    if (username == NULL) {
+        printf("ERROR: Cannot process order. Invalid username.\n");
+        return;
+    }
+    
     printf("MODULE_CALL: Order Processor (ENQUEUE)\n");
 
     int new_id = next_order_id++;

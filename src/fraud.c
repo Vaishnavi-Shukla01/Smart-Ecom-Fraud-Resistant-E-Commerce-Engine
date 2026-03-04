@@ -4,9 +4,10 @@
 #include <string.h>
 
 #define REVIEW_HASH_SIZE 5
+#define MAX_REVIEW_LEN 100
 
 typedef struct ReviewEntry {
-    char review_content[100];
+    char review_content[MAX_REVIEW_LEN];
     struct ReviewEntry *next;
 } ReviewEntry;
 
@@ -29,6 +30,10 @@ void fraud_init() {
 }
 
 bool fraud_check_review(const char* new_review) {
+    if (new_review == NULL || strlen(new_review) == 0) {
+        return false;
+    }
+    
     int index = simple_string_hash(new_review);
     ReviewEntry* current = review_hash_table[index];
 
@@ -45,10 +50,13 @@ bool fraud_check_review(const char* new_review) {
 
     ReviewEntry* newEntry = (ReviewEntry*)malloc(sizeof(ReviewEntry));
     if (newEntry == NULL) {
-        fprintf(stderr, "Error: Memory allocation failed for ReviewEntry.\n");
+        fprintf(stderr, "ERROR: Memory allocation failed for ReviewEntry.\n");
         return false;
     }
-    strcpy(newEntry->review_content, new_review);
+    
+    strncpy(newEntry->review_content, new_review, MAX_REVIEW_LEN - 1);
+    newEntry->review_content[MAX_REVIEW_LEN - 1] = '\0';
+    
     newEntry->next = review_hash_table[index];
     review_hash_table[index] = newEntry;
 

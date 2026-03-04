@@ -7,9 +7,21 @@
 static Product* catalog_root = NULL;
 
 static Product* create_product_node(int id, const char* name, float price) {
+    if (name == NULL) {
+        return NULL;
+    }
+    
     Product* newNode = (Product*)malloc(sizeof(Product));
+    if (newNode == NULL) {
+        fprintf(stderr, "ERROR: Memory allocation failed for Product node.\n");
+        return NULL;
+    }
+    
     newNode->id = id;
-    strcpy(newNode->name, name);
+    
+    strncpy(newNode->name, name, MAX_NAME_LEN - 1);
+    newNode->name[MAX_NAME_LEN - 1] = '\0';
+    
     newNode->price = price;
     newNode->left = NULL;
     newNode->right = NULL;
@@ -17,6 +29,7 @@ static Product* create_product_node(int id, const char* name, float price) {
 }
 
 static Product* insert_product_bst(Product* root, Product* newProd) {
+    if (newProd == NULL) return root;
     if (root == NULL) return newProd;
 
     if (newProd->id < root->id) {
@@ -51,7 +64,7 @@ Product* product_search(int id) {
 }
 
 Product* recursive_name_search(Product* root, const char* target_name) {
-    if (root == NULL) {
+    if (root == NULL || target_name == NULL) {
         return NULL;
     }
 
@@ -64,8 +77,8 @@ Product* recursive_name_search(Product* root, const char* target_name) {
         return NULL;
     }
 
-    for (size_t i = 0; i <= len_root; i++) root_name_lower[i] = tolower(root->name[i]);
-    for (size_t i = 0; i <= len_target; i++) target_lower[i] = tolower(target_name[i]);
+    for (size_t i = 0; i <= len_root; i++) root_name_lower[i] = (char)tolower((unsigned char)root->name[i]);
+    for (size_t i = 0; i <= len_target; i++) target_lower[i] = (char)tolower((unsigned char)target_name[i]);
 
     if (strstr(root_name_lower, target_lower) != NULL) {
         return root;

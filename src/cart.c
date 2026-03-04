@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <sys/stat.h>
 #ifdef _WIN32
 #include <direct.h>
@@ -14,6 +15,51 @@
 static CartItem* cart_head = NULL;
 static UndoAction* undo_stack_head = NULL;
 static char current_cart_filename[MAX_FILENAME_LEN] = {0};
+
+static bool is_valid_username(const char* username) {
+    if (username == NULL || username[0] == '\0') {
+        return false;
+    }
+    
+    size_t len = strlen(username);
+    if (len == 0 || len > MAX_NAME_LEN - 1) {
+        return false;
+    }
+    
+    for (size_t i = 0; i < len; i++) {
+        char c = username[i];
+        if (!isalnum((unsigned char)c) && c != '_' && c != '-') {
+            return false;
+        }
+    }
+    
+    if (strstr(username, "..") != NULL) {
+        return false;
+    }
+    
+    return true;
+}
+
+static bool is_path_inside_carts_dir(const char* filepath) {
+    if (filepath == NULL) {
+        return false;
+    }
+    
+    size_t carts_dir_len = strlen(CARTS_DIR);
+    if (strncmp(filepath, CARTS_DIR, carts_dir_len) != 0) {
+        return false;
+    }
+    
+    if (filepath[carts_dir_len] != '/' && filepath[carts_dir_len] != '\\') {
+        return false;
+    }
+    
+    if (strstr(filepath, "..") != NULL) {
+        return false;
+    }
+    
+    return true;
+}
 
 static void free_current_state() {
     CartItem* current_cart = cart_head;
@@ -42,6 +88,11 @@ static void ensure_carts_dir() {
 
 static void cart_save() {
     if (current_cart_filename[0] == '\0') return;
+    
+    if (!is_path_inside_carts_dir(current_cart_filename)) {
+        fprintf(stderr, "ERROR: Invalid cart file path.\n");
+        return;
+    }
 
     ensure_carts_dir();
 
@@ -85,8 +136,24 @@ void cart_init() {
 
 void cart_load(const char* username) {
     free_current_state();
+    
+    if (!is_valid_username(username)) {
+        printf("ERROR: Invalid username format.\n");
+        return;
+    }
 
-    snprintf(current_cart_filename, MAX_FILENAME_LEN, "%s/%s.txt", CARTS_DIR, username);
+    int written = snprintf(current_cart_filename, MAX_FILENAME_LEN, "%s/%s.txt", CARTS_DIR, username);
+    if (written < 0 || written >= MAX_FILENAME_LEN) {
+        printf("ERROR: Cart filename too long.\n");
+        current_cart_filename[0] = '\0';
+        return;
+    }
+    
+    if (!is_path_inside_carts_dir(current_cart_filename)) {
+        printf("ERROR: Invalid cart file path.\n");
+        current_cart_filename[0] = '\0';
+        return;
+    }
 
     FILE *f = fopen(current_cart_filename, "r");
     if (!f) {
@@ -144,6 +211,8 @@ void cart_add_item(int product_id, int quantity) {
 }
 
 void cart_remove_item(int product_id, int quantity) {
+    (void)product_id;
+    (void)quantity;
 }
 
 void cart_undo_last_action() {
@@ -199,9 +268,9 @@ void cart_display() {
     while (current != NULL) {
         if (current->quantity > 0) {
             printf("CART_ITEM:%d|%d\n", current->product_id, current->quantity);
+            count++;
         }
         current = current->next;
-        count++;
     }
     if (count == 0) {
         printf("Cart is empty.\n");
@@ -209,11 +278,29 @@ void cart_display() {
 }
 
 void cart_clear(const char* username) {
-    snprintf(current_cart_filename, MAX_FILENAME_LEN, "%s/%s.txt", CARTS_DIR, username);
+    if (!is_valid_username(username)) {
+        printf("ERROR: Invalid username format.\n");
+        return;
+    }
+    
+    char filepath[MAX_FILENAME_LEN];
+    int written = snprintf(filepath, MAX_FILENAME_LEN, "%s/%s.txt", CARTS_DIR, username);
+    if (written < 0 || written >= MAX_FILENAME_LEN) {
+        printf("ERROR: Cart filename too long.\n");
+        return;
+    }
+    
+    if (!is_path_inside_carts_dir(filepath)) {
+        printf("ERROR: Invalid cart file path. Deletion aborted.\n");
+        return;
+    }
+    
+    strncpy(current_cart_filename, filepath, MAX_FILENAME_LEN - 1);
+    current_cart_filename[MAX_FILENAME_LEN - 1] = '\0';
 
     free_current_state();
 
-    remove(current_cart_filename);
+    remove(filepath);
 
     printf("RESULT: Cart contents cleared from memory and disk for %s.\n", username);
 }

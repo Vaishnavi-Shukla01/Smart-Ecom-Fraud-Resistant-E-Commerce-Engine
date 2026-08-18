@@ -4,10 +4,10 @@
 #include "data.h"
 #include <stdbool.h>
 
-// Function Declarations
 void product_init();
 Product* product_search(int id);
 Product* product_search_by_name(const char* name);
 void product_display_all();
+float product_get_price(int id);
 
-#endif // PRODUCT_H
+#endif

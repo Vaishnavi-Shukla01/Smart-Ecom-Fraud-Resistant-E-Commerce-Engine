@@ -1,23 +1,66 @@
 #include "cart.h"
-#include "product.h" // Needed to look up product price for total calculation
+#include "product.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/stat.h> 
+#include <ctype.h>
+#include <sys/stat.h>
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(dir, mode) _mkdir(dir)
+#endif
 
 #define CARTS_DIR "carts"
 
-// Global Cart Linked List Head
 static CartItem* cart_head = NULL;
-// Global Undo Stack Head
 static UndoAction* undo_stack_head = NULL;
-// Global variable to store the current user's cart filename
 static char current_cart_filename[MAX_FILENAME_LEN] = {0};
 
+static bool is_valid_username(const char* username) {
+    if (username == NULL || username[0] == '\0') {
+        return false;
+    }
+    
+    size_t len = strlen(username);
+    if (len == 0 || len > MAX_NAME_LEN - 1) {
+        return false;
+    }
+    
+    for (size_t i = 0; i < len; i++) {
+        char c = username[i];
+        if (!isalnum((unsigned char)c) && c != '_' && c != '-') {
+            return false;
+        }
+    }
+    
+    if (strstr(username, "..") != NULL) {
+        return false;
+    }
+    
+    return true;
+}
 
-// --- Persistence Helpers ---
+static bool is_path_inside_carts_dir(const char* filepath) {
+    if (filepath == NULL) {
+        return false;
+    }
+    
+    size_t carts_dir_len = strlen(CARTS_DIR);
+    if (strncmp(filepath, CARTS_DIR, carts_dir_len) != 0) {
+        return false;
+    }
+    
+    if (filepath[carts_dir_len] != '/' && filepath[carts_dir_len] != '\\') {
+        return false;
+    }
+    
+    if (strstr(filepath, "..") != NULL) {
+        return false;
+    }
+    
+    return true;
+}
 
-// Frees the current cart list and undo stack
 static void free_current_state() {
     CartItem* current_cart = cart_head;
     while (current_cart != NULL) {
@@ -36,28 +79,29 @@ static void free_current_state() {
     undo_stack_head = NULL;
 }
 
-// Helper to save all orders currently in the queue to file
 static void ensure_carts_dir() {
-    // Attempt to create the directory only if it doesn't exist
     struct stat st = {0};
     if (stat(CARTS_DIR, &st) == -1) {
         mkdir(CARTS_DIR, 0700);
     }
 }
 
-// Saves cart items to file
 static void cart_save() {
-    if (current_cart_filename[0] == '\0') return; // Cannot save if no user is loaded
+    if (current_cart_filename[0] == '\0') return;
     
+    if (!is_path_inside_carts_dir(current_cart_filename)) {
+        fprintf(stderr, "ERROR: Invalid cart file path.\n");
+        return;
+    }
+
     ensure_carts_dir();
 
-    FILE *f = fopen(current_cart_filename, "w"); // Overwrite mode
+    FILE *f = fopen(current_cart_filename, "w");
     if (f) {
         CartItem* current = cart_head;
         while (current != NULL) {
-            // Save in simple format: ID|QTY\n
-            if (current->quantity > 0) { // Only save items with positive quantity
-                 fprintf(f, "%d|%d\n", current->product_id, current->quantity);
+            if (current->quantity > 0) {
+                fprintf(f, "%d|%d\n", current->product_id, current->quantity);
             }
             current = current->next;
         }
@@ -67,8 +111,6 @@ static void cart_save() {
     }
 }
 
-
-// --- STACK Operations (for Undo) ---
 static void push_undo(int id, int change) {
     UndoAction* newNode = (UndoAction*)malloc(sizeof(UndoAction));
     if (newNode == NULL) {
@@ -88,19 +130,31 @@ static UndoAction* pop_undo() {
     return temp;
 }
 
-// --- CART (Linked List) Operations ---
-
 void cart_init() {
-    // Initialization is now handled by cart_load when a user logs in
     free_current_state();
 }
 
 void cart_load(const char* username) {
-    free_current_state(); // Clear any previous state
+    free_current_state();
     
-    // Construct the filename: carts/<username>.txt
-    snprintf(current_cart_filename, MAX_FILENAME_LEN, "%s/%s.txt", CARTS_DIR, username);
+    if (!is_valid_username(username)) {
+        printf("ERROR: Invalid username format.\n");
+        return;
+    }
+
+    int written = snprintf(current_cart_filename, MAX_FILENAME_LEN, "%s/%s.txt", CARTS_DIR, username);
+    if (written < 0 || written >= MAX_FILENAME_LEN) {
+        printf("ERROR: Cart filename too long.\n");
+        current_cart_filename[0] = '\0';
+        return;
+    }
     
+    if (!is_path_inside_carts_dir(current_cart_filename)) {
+        printf("ERROR: Invalid cart file path.\n");
+        current_cart_filename[0] = '\0';
+        return;
+    }
+
     FILE *f = fopen(current_cart_filename, "r");
     if (!f) {
         printf("OK: Cart file for user '%s' not found. Starting with empty cart.\n", username);
@@ -111,13 +165,12 @@ void cart_load(const char* username) {
     int id, qty;
 
     while (fgets(line, sizeof(line), f)) {
-        // Read lines in format: id|quantity\n
         if (sscanf(line, "%d|%d", &id, &qty) == 2) {
             CartItem* newNode = (CartItem*)malloc(sizeof(CartItem));
             if (newNode) {
                 newNode->product_id = id;
                 newNode->quantity = qty;
-                newNode->next = cart_head; // Insert at head
+                newNode->next = cart_head;
                 cart_head = newNode;
             }
         }
@@ -133,18 +186,16 @@ void cart_add_item(int product_id, int quantity) {
     }
 
     CartItem* current = cart_head;
-    // Check if item already exists
     while (current != NULL) {
         if (current->product_id == product_id) {
             current->quantity += quantity;
-            push_undo(product_id, -quantity); // Undo means reversing the addition
+            push_undo(product_id, -quantity);
             cart_save();
             return;
         }
         current = current->next;
     }
-    
-    // Item is new, create new node and add to head (Linked List concept)
+
     CartItem* newNode = (CartItem*)malloc(sizeof(CartItem));
     if (newNode == NULL) {
         fprintf(stderr, "ERROR: Memory allocation failed for new CartItem.\n");
@@ -154,13 +205,14 @@ void cart_add_item(int product_id, int quantity) {
     newNode->quantity = quantity;
     newNode->next = cart_head;
     cart_head = newNode;
-    
-    push_undo(product_id, -quantity); // Undo means reversing the addition
+
+    push_undo(product_id, -quantity);
     cart_save();
 }
 
 void cart_remove_item(int product_id, int quantity) {
-    // Logic for removal exists but is not currently exposed via Flask action in your setup
+    (void)product_id;
+    (void)quantity;
 }
 
 void cart_undo_last_action() {
@@ -174,28 +226,26 @@ void cart_undo_last_action() {
         printf("UNDO_STATUS: No action to undo (Stack is empty).\n");
         return;
     }
-    
-    // Apply the reverse action
+
     int reverse_change = action->quantity_change * -1;
-    
+
     CartItem* current = cart_head;
     CartItem* prev = NULL;
-    
+
     while (current != NULL) {
         if (current->product_id == action->product_id) {
             current->quantity += reverse_change;
-            
-            // If quantity drops to zero or below, remove the node from the Linked List
+
             if (current->quantity <= 0) {
                 printf("UNDO_STATUS: Removed Product %d from cart (Quantity reached 0).\n", action->product_id);
                 if (prev == NULL) {
-                    cart_head = current->next; // Removing head node
+                    cart_head = current->next;
                 } else {
-                    prev->next = current->next; // Removing middle/last node
+                    prev->next = current->next;
                 }
                 free(current);
             } else {
-                printf("UNDO_STATUS: Successfully undid action for Product %d. New Quantity: %d.\n", 
+                printf("UNDO_STATUS: Successfully undid action for Product %d. New Quantity: %d.\n",
                        action->product_id, current->quantity);
             }
 
@@ -206,7 +256,7 @@ void cart_undo_last_action() {
         prev = current;
         current = current->next;
     }
-    
+
     printf("UNDO_STATUS: Error: Product %d not found in cart during undo.\n", action->product_id);
     free(action);
 }
@@ -216,42 +266,52 @@ void cart_display() {
     CartItem* current = cart_head;
     int count = 0;
     while (current != NULL) {
-        // Structured output for Flask to parse: CART_ITEM:ID|QUANTITY
         if (current->quantity > 0) {
-             printf("CART_ITEM:%d|%d\n", current->product_id, current->quantity);
+            printf("CART_ITEM:%d|%d\n", current->product_id, current->quantity);
+            count++;
         }
         current = current->next;
-        count++;
     }
     if (count == 0) {
         printf("Cart is empty.\n");
     }
 }
 
-// NEW: Clear the cart and save the empty state
 void cart_clear(const char* username) {
-    // Construct the filename using the username
-    snprintf(current_cart_filename, MAX_FILENAME_LEN, "%s/%s.txt", CARTS_DIR, username);
+    if (!is_valid_username(username)) {
+        printf("ERROR: Invalid username format.\n");
+        return;
+    }
     
-    // Clear in-memory Linked List and Stack
-    free_current_state(); 
+    char filepath[MAX_FILENAME_LEN];
+    int written = snprintf(filepath, MAX_FILENAME_LEN, "%s/%s.txt", CARTS_DIR, username);
+    if (written < 0 || written >= MAX_FILENAME_LEN) {
+        printf("ERROR: Cart filename too long.\n");
+        return;
+    }
     
-    // Delete the cart file to persist the empty state
-    remove(current_cart_filename);
+    if (!is_path_inside_carts_dir(filepath)) {
+        printf("ERROR: Invalid cart file path. Deletion aborted.\n");
+        return;
+    }
     
+    strncpy(current_cart_filename, filepath, MAX_FILENAME_LEN - 1);
+    current_cart_filename[MAX_FILENAME_LEN - 1] = '\0';
+
+    free_current_state();
+
+    remove(filepath);
+
     printf("RESULT: Cart contents cleared from memory and disk for %s.\n", username);
 }
 
-// Calculate the total cost of the items currently in the Linked List
 float cart_calculate_total() {
     float total = 0.0;
     CartItem* current = cart_head;
 
-    // Traverse the Linked List
     while (current != NULL) {
         if (current->quantity > 0) {
-            // Use the product module function to look up the price (BST lookup)
-            float item_price = product_get_price(current->product_id); 
+            float item_price = product_get_price(current->product_id);
             total += (item_price * current->quantity);
         }
         current = current->next;
